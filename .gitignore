@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 .env
+nul
+
+# Build cache
+.vite
 
 # Editor directories and files
 .vscode/*
