@@ -8,6 +8,7 @@ import PlankStats from '../components/plank/PlankStats';
 import RecentLogs from '../components/plank/RecentLogs';
 import ActivityFeed from '../components/activity/ActivityFeed';
 import HealthTips from '../components/tips/HealthTips';
+import CompanyProgress from '../components/company/CompanyProgress';
 
 export default function Dashboard() {
   const { user, profile, signOut, reloadProfile } = useAuth();
@@ -154,6 +155,10 @@ export default function Dashboard() {
             {/* Left Column - Log Form and Stats */}
             <div className="lg:col-span-2 space-y-6">
               <PlankLogForm onLogPlank={handleLogPlank} loading={plankLoading} />
+              <CompanyProgress
+                userTotalSeconds={totalSeconds}
+                onRefresh={fetchRecentLogs}
+              />
               <PlankStats totalSeconds={totalSeconds} />
               <HealthTips />
             </div>
