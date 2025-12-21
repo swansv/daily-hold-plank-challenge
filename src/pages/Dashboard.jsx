@@ -96,7 +96,7 @@ export default function Dashboard() {
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <h1 className="text-2xl font-display font-bold text-white tracking-tight">
-                Wellness Plank Challenge
+                Daily Hold Plank Challenge
               </h1>
             </div>
             <div className="flex items-center space-x-4">

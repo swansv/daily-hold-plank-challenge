@@ -33,7 +33,7 @@ export default function Login() {
             Sign in to your account
           </h2>
           <p className="mt-2 text-center text-sm text-dark-600">
-            Welcome to the Wellness Plank Challenge
+            Welcome to the Daily Hold Plank Challenge
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>

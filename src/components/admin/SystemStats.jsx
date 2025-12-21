@@ -155,7 +155,7 @@ export default function SystemStats() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">System Overview</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Key metrics and statistics for the Wellness Plank Challenge
+          Key metrics and statistics for the Daily Hold Plank Challenge
         </p>
       </div>
 

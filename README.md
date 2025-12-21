@@ -1,4 +1,4 @@
-# Wellness Plank Challenge App
+# Daily Hold Plank Challenge App
 
 A corporate wellness app for running plank challenges. Users can log plank times, track progress toward milestones, view activity feeds, and access health tips.
 
