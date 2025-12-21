@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Tailwind v4 Custom Theme - Brand Colors */
+@theme {
+  --color-brand-teal: #006466;
+  --color-brand-ocean: #0f4c75;
+  --color-brand-turquoise: #20b2aa;
+  --color-brand-green: #2e8b57;
+  --color-brand-purple: #4d194d;
+  --color-brand-slate: #483d8b;
+  --color-brand-cyan: #008b8b;
+  --color-brand-darkblue: #144552;
+
+  --color-success-50: #f0fdf4;
+  --color-success-600: #2e8b57;
+
+  --color-dark-50: #f8f9fa;
+  --color-dark-800: #495057;
+  --color-dark-900: #212529;
+}
+
 /* Google Fonts Import */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap');
 
