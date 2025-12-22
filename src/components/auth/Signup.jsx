@@ -17,6 +17,10 @@ export default function Signup() {
   const { signUp } = useAuth();
 
   const handleChange = (e) => {
+    // Clear any previous errors when user modifies form
+    if (error) {
+      setError('');
+    }
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -41,10 +45,14 @@ export default function Signup() {
 
     setLoading(true);
 
+    // Normalize codes: trim whitespace and convert to uppercase for case-insensitive lookup
+    const normalizedCompanyCode = formData.companyCode.trim().toUpperCase() || null;
+    const normalizedTeamCode = formData.teamCode.trim().toUpperCase() || null;
+
     const { error } = await signUp(formData.email, formData.password, {
       full_name: formData.fullName,
-      company_code: formData.companyCode || null,
-      team_code: formData.teamCode || null,
+      company_code: normalizedCompanyCode,
+      team_code: normalizedTeamCode,
     });
 
     if (error) {
