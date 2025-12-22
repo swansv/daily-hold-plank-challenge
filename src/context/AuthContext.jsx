@@ -70,6 +70,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Helper: Log signup errors to database for debugging (mobile users can't see console)
+  const logSignupError = async (email, errorMessage, errorDetails) => {
+    try {
+      console.log('[SignUp] Logging error to signup_errors table...');
+      await supabase.from('signup_errors').insert([
+        {
+          email,
+          error_message: errorMessage,
+          error_details: errorDetails,
+        },
+      ]);
+      console.log('[SignUp] Error logged to signup_errors table');
+    } catch (logError) {
+      console.error('[SignUp] Failed to log error to signup_errors table:', logError);
+    }
+  };
+
+  // Helper: Clean up after failed signup - sign out user and log for manual deletion
+  const cleanupAuthUser = async (userId, email) => {
+    try {
+      console.log('[SignUp] Cleaning up failed signup for user:', userId);
+
+      // Sign out the user so they're not left in a broken state
+      await supabase.auth.signOut();
+      console.log('[SignUp] User signed out');
+
+      // Log to signup_errors that this auth user needs manual deletion
+      await supabase.from('signup_errors').insert([
+        {
+          email,
+          error_message: 'GHOST ACCOUNT: Auth user created but profile insert failed - needs manual deletion',
+          error_details: { auth_user_id: userId, needs_deletion: true },
+        },
+      ]);
+      console.log('[SignUp] Ghost account logged for manual cleanup');
+    } catch (cleanupError) {
+      console.error('[SignUp] Exception during cleanup:', cleanupError);
+    }
+  };
+
   const signUp = async (email, password, userData) => {
     console.log('[SignUp] ========== SIGNUP START ==========');
     console.log('[SignUp] Email:', email);
@@ -199,6 +239,20 @@ export const AuthProvider = ({ children }) => {
             console.error('  code:', profileError.code);
             console.error('  details:', profileError.details);
             console.error('  hint:', profileError.hint);
+
+            // Log error to signup_errors table for debugging (mobile users can't see console)
+            await logSignupError(email, profileError.message, {
+              code: profileError.code,
+              details: profileError.details,
+              hint: profileError.hint,
+              insertValues,
+              step: 'users_table_insert',
+            });
+
+            // Clean up the auth user to prevent ghost accounts
+            console.log('[SignUp] Cleaning up: signing out and logging ghost account...');
+            await cleanupAuthUser(data.user.id, email);
+
             throw profileError;
           }
 
@@ -206,6 +260,19 @@ export const AuthProvider = ({ children }) => {
         } catch (insertError) {
           console.error('[SignUp] INSERT exception caught:', insertError);
           console.error('[SignUp] INSERT exception message:', insertError.message);
+
+          // Log error to signup_errors table if not already logged (Supabase errors have .code)
+          if (!insertError.code) {
+            await logSignupError(email, insertError.message, {
+              insertValues,
+              step: 'users_table_insert_exception',
+            });
+
+            // Clean up the auth user to prevent ghost accounts
+            console.log('[SignUp] Cleaning up: signing out and logging ghost account...');
+            await cleanupAuthUser(data.user.id, email);
+          }
+
           throw insertError;
         }
 
