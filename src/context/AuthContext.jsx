@@ -71,47 +71,74 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signUp = async (email, password, userData) => {
-    console.log('[SignUp] Starting signup process for:', email);
-    console.log('[SignUp] User data:', userData);
+    console.log('[SignUp] ========== SIGNUP START ==========');
+    console.log('[SignUp] Email:', email);
+    console.log('[SignUp] User data:', JSON.stringify(userData, null, 2));
 
     try {
-      // Look up company UUID from company_code if provided
+      // STEP 1: Look up company UUID from company_code BEFORE creating auth user
       let companyId = null;
       if (userData.company_code) {
-        console.log('[SignUp] Looking up company code:', userData.company_code);
-        const { data: companyData, error: companyError } = await supabase
-          .from('companies')
-          .select('id')
-          .eq('company_code', userData.company_code)
-          .single();
+        console.log('[SignUp] STEP 1: Looking up company code:', userData.company_code);
+        try {
+          const { data: companyData, error: companyError } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('company_code', userData.company_code)
+            .single();
 
-        if (companyError) {
-          console.error('[SignUp] Company lookup failed:', companyError);
-          throw new Error(`Company code "${userData.company_code}" not found`);
+          if (companyError) {
+            console.error('[SignUp] Company lookup FAILED:', companyError);
+            throw new Error(`Company code "${userData.company_code}" not found`);
+          }
+          companyId = companyData?.id;
+          console.log('[SignUp] Company lookup result - companyId:', companyId, 'type:', typeof companyId);
+        } catch (companyLookupError) {
+          console.error('[SignUp] Company lookup exception:', companyLookupError);
+          throw companyLookupError;
         }
-        companyId = companyData.id;
-        console.log('[SignUp] Found company ID:', companyId);
+      } else {
+        console.log('[SignUp] STEP 1: No company_code provided');
       }
 
-      // Look up team UUID from team_code if provided
+      // CRITICAL CHECK: company_id is NOT NULL in database
+      // If company code was provided but lookup failed, we must abort BEFORE creating auth user
+      if (userData.company_code && !companyId) {
+        const errorMsg = `SIGNUP FAILED: company_id is null/undefined after lookup for code "${userData.company_code}"`;
+        console.error('[SignUp] ' + errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // STEP 2: Look up team UUID from team_code if provided
       let teamId = null;
       if (userData.team_code) {
-        console.log('[SignUp] Looking up team code:', userData.team_code);
-        const { data: teamData, error: teamError } = await supabase
-          .from('teams')
-          .select('id')
-          .eq('team_code', userData.team_code)
-          .single();
+        console.log('[SignUp] STEP 2: Looking up team code:', userData.team_code);
+        try {
+          const { data: teamData, error: teamError } = await supabase
+            .from('teams')
+            .select('id')
+            .eq('team_code', userData.team_code)
+            .single();
 
-        if (teamError) {
-          console.error('[SignUp] Team lookup failed:', teamError);
-          throw new Error(`Team code "${userData.team_code}" not found`);
+          if (teamError) {
+            console.error('[SignUp] Team lookup FAILED:', teamError);
+            throw new Error(`Team code "${userData.team_code}" not found`);
+          }
+          teamId = teamData?.id;
+          console.log('[SignUp] Team lookup result - teamId:', teamId, 'type:', typeof teamId);
+        } catch (teamLookupError) {
+          console.error('[SignUp] Team lookup exception:', teamLookupError);
+          throw teamLookupError;
         }
-        teamId = teamData.id;
-        console.log('[SignUp] Found team ID:', teamId);
+      } else {
+        console.log('[SignUp] STEP 2: No team_code provided');
       }
 
-      console.log('[SignUp] Calling supabase.auth.signUp...');
+      // Log resolved IDs before proceeding
+      console.log('[SignUp] Pre-auth check - companyId:', companyId, '| teamId:', teamId);
+
+      // STEP 3: Create auth user
+      console.log('[SignUp] STEP 3: Calling supabase.auth.signUp...');
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -121,7 +148,7 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) {
-        console.error('[SignUp] Auth signUp failed:', error);
+        console.error('[SignUp] Auth signUp FAILED:', error);
         throw error;
       }
 
@@ -131,31 +158,55 @@ export const AuthProvider = ({ children }) => {
         session: data.session ? 'present' : 'null',
       });
 
-      // Create user profile in users table
+      // STEP 4: Create user profile in users table
       if (data.user) {
-        console.log('[SignUp] Creating user profile in users table...');
-        const profileData = {
+        console.log('[SignUp] STEP 4: Creating user profile in users table...');
+
+        // Log EXACT values being inserted
+        const insertValues = {
           auth_user_id: data.user.id,
           email: data.user.email,
           full_name: userData.full_name,
           company_id: companyId,
           team_id: teamId,
         };
-        console.log('[SignUp] Profile data:', profileData);
 
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([profileData]);
+        console.log('[SignUp] INSERT VALUES (exact):');
+        console.log('  auth_user_id:', insertValues.auth_user_id, '| type:', typeof insertValues.auth_user_id);
+        console.log('  email:', insertValues.email, '| type:', typeof insertValues.email);
+        console.log('  full_name:', insertValues.full_name, '| type:', typeof insertValues.full_name);
+        console.log('  company_id:', insertValues.company_id, '| type:', typeof insertValues.company_id);
+        console.log('  team_id:', insertValues.team_id, '| type:', typeof insertValues.team_id);
 
-        if (profileError) {
-          console.error('[SignUp] Profile INSERT failed:', profileError);
-          console.error('[SignUp] Profile error details:', {
-            message: profileError.message,
-            code: profileError.code,
-            details: profileError.details,
-            hint: profileError.hint,
-          });
-          throw profileError;
+        // CRITICAL: Check for null company_id before INSERT (column is NOT NULL)
+        if (insertValues.company_id === null || insertValues.company_id === undefined) {
+          const errorMsg = 'SIGNUP FAILED: company_id is ' + (insertValues.company_id === null ? 'null' : 'undefined') + ' - cannot insert into users table (NOT NULL constraint)';
+          console.error('[SignUp] ' + errorMsg);
+          throw new Error(errorMsg);
+        }
+
+        // Wrap INSERT in its own try/catch for detailed error capture
+        try {
+          console.log('[SignUp] Executing INSERT...');
+          const { data: insertData, error: profileError } = await supabase
+            .from('users')
+            .insert([insertValues])
+            .select();
+
+          if (profileError) {
+            console.error('[SignUp] INSERT FAILED with Supabase error:');
+            console.error('  message:', profileError.message);
+            console.error('  code:', profileError.code);
+            console.error('  details:', profileError.details);
+            console.error('  hint:', profileError.hint);
+            throw profileError;
+          }
+
+          console.log('[SignUp] INSERT SUCCEEDED! Created user:', insertData);
+        } catch (insertError) {
+          console.error('[SignUp] INSERT exception caught:', insertError);
+          console.error('[SignUp] INSERT exception message:', insertError.message);
+          throw insertError;
         }
 
         console.log('[SignUp] Profile created successfully!');
@@ -163,9 +214,12 @@ export const AuthProvider = ({ children }) => {
         console.warn('[SignUp] No user returned from auth.signUp - email confirmation may be required');
       }
 
+      console.log('[SignUp] ========== SIGNUP COMPLETE ==========');
       return { data, error: null };
     } catch (error) {
-      console.error('[SignUp] Caught error:', error);
+      console.error('[SignUp] ========== SIGNUP FAILED ==========');
+      console.error('[SignUp] Final error:', error);
+      console.error('[SignUp] Error message:', error.message);
       return { data: null, error };
     }
   };
