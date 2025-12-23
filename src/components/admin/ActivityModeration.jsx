@@ -4,17 +4,29 @@ import { format, formatDistanceToNow } from 'date-fns';
 
 export default function ActivityModeration() {
   const [activities, setActivities] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
 
   useEffect(() => {
-    fetchActivities();
+    fetchData();
   }, []);
 
-  const fetchActivities = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
+      // Fetch companies
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, company_code, company_name')
+        .order('company_code', { ascending: true });
+
+      if (companiesError) throw companiesError;
+      setCompanies(companiesData || []);
+
+      // Fetch activities with user company_id
       const { data, error } = await supabase
         .from('plank_logs')
         .select(`
@@ -25,7 +37,8 @@ export default function ActivityModeration() {
           users!inner (
             full_name,
             email,
-            total_plank_seconds
+            total_plank_seconds,
+            company_id
           )
         `)
         .order('created_at', { ascending: false })
@@ -34,7 +47,7 @@ export default function ActivityModeration() {
       if (error) throw error;
       setActivities(data || []);
     } catch (error) {
-      console.error('Error fetching activities:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -54,7 +67,7 @@ export default function ActivityModeration() {
       if (error) throw error;
 
       // Refresh activities
-      await fetchActivities();
+      await fetchData();
       setSelectedActivity(null);
       alert('Activity deleted successfully');
     } catch (error) {
@@ -82,6 +95,11 @@ export default function ActivityModeration() {
   };
 
   const filteredActivities = activities.filter((activity) => {
+    // Company filter
+    if (selectedCompanyId && activity.users?.company_id !== selectedCompanyId) {
+      return false;
+    }
+    // Flagged filter
     if (filter === 'flagged') {
       return getActivityFlag(activity.duration_seconds) !== null;
     }
@@ -107,47 +125,69 @@ export default function ActivityModeration() {
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex items-center space-x-4">
-          <label className="text-sm font-medium text-gray-700">Filter:</label>
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              filter === 'all'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All Activities
-          </button>
-          <button
-            onClick={() => setFilter('flagged')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              filter === 'flagged'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Flagged Only
-          </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="company-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Filter by Company Code
+            </label>
+            <select
+              id="company-filter"
+              value={selectedCompanyId}
+              onChange={(e) => setSelectedCompanyId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All Companies</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.company_code} - {company.company_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  filter === 'all'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                All Activities
+              </button>
+              <button
+                onClick={() => setFilter('flagged')}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  filter === 'flagged'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Flagged Only
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Total Activities</p>
-          <p className="text-2xl font-bold text-gray-900">{activities.length}</p>
+          <p className="text-sm text-gray-600">Total Activities {selectedCompanyId && '(Filtered)'}</p>
+          <p className="text-2xl font-bold text-gray-900">{filteredActivities.length}</p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Flagged Activities</p>
           <p className="text-2xl font-bold text-yellow-600">
-            {activities.filter((a) => getActivityFlag(a.duration_seconds)).length}
+            {filteredActivities.filter((a) => getActivityFlag(a.duration_seconds)).length}
           </p>
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Unique Users</p>
           <p className="text-2xl font-bold text-indigo-600">
-            {new Set(activities.map((a) => a.user_id)).size}
+            {new Set(filteredActivities.map((a) => a.user_id)).size}
           </p>
         </div>
       </div>

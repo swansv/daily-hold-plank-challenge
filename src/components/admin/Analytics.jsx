@@ -4,17 +4,47 @@ import { format, subDays, startOfDay } from 'date-fns';
 
 export default function Analytics() {
   const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [dailyData, setDailyData] = useState([]);
   const [milestoneDistribution, setMilestoneDistribution] = useState({});
   const [topPerformers, setTopPerformers] = useState([]);
 
   useEffect(() => {
-    fetchAnalytics();
+    fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [selectedCompanyId]);
+
+  const fetchCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, company_code, company_name')
+        .order('company_code', { ascending: true });
+
+      if (error) throw error;
+      setCompanies(data || []);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    }
+  };
 
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
+      // Get user IDs for selected company (if any)
+      let companyUserIds = null;
+      if (selectedCompanyId) {
+        const { data: companyUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('company_id', selectedCompanyId);
+        companyUserIds = companyUsers?.map(u => u.id) || [];
+      }
+
       // Fetch daily activity for the last 7 days
       const days = 7;
       const dailyStats = [];
@@ -25,11 +55,26 @@ export default function Analytics() {
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 1);
 
-        const { data: logsData, count } = await supabase
+        let query = supabase
           .from('plank_logs')
-          .select('duration_seconds', { count: 'exact' })
+          .select('duration_seconds, user_id', { count: 'exact' })
           .gte('created_at', startDate.toISOString())
           .lt('created_at', endDate.toISOString());
+
+        // Filter by company users if selected
+        if (companyUserIds && companyUserIds.length > 0) {
+          query = query.in('user_id', companyUserIds);
+        } else if (companyUserIds && companyUserIds.length === 0) {
+          // Company selected but has no users
+          dailyStats.push({
+            date: format(date, 'MMM d'),
+            logs: 0,
+            totalSeconds: 0,
+          });
+          continue;
+        }
+
+        const { data: logsData, count } = await query;
 
         const totalSeconds = logsData?.reduce(
           (sum, log) => sum + log.duration_seconds,
@@ -46,9 +91,11 @@ export default function Analytics() {
       setDailyData(dailyStats);
 
       // Fetch milestone distribution
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('total_plank_seconds');
+      let usersQuery = supabase.from('users').select('total_plank_seconds');
+      if (selectedCompanyId) {
+        usersQuery = usersQuery.eq('company_id', selectedCompanyId);
+      }
+      const { data: usersData } = await usersQuery;
 
       const distribution = {
         Starter: 0,
@@ -72,11 +119,15 @@ export default function Analytics() {
       setMilestoneDistribution(distribution);
 
       // Fetch top performers
-      const { data: topUsers } = await supabase
+      let topQuery = supabase
         .from('users')
         .select('full_name, total_plank_seconds')
         .order('total_plank_seconds', { ascending: false })
         .limit(10);
+      if (selectedCompanyId) {
+        topQuery = topQuery.eq('company_id', selectedCompanyId);
+      }
+      const { data: topUsers } = await topQuery;
 
       setTopPerformers(topUsers || []);
     } catch (error) {
@@ -118,13 +169,38 @@ export default function Analytics() {
     0
   );
 
+  const selectedCompany = companies.find(c => c.id === selectedCompanyId);
+
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Analytics & Insights</h2>
         <p className="text-sm text-gray-600 mt-1">
           Visual representation of user engagement and progress
+          {selectedCompany && ` for ${selectedCompany.company_code}`}
         </p>
+      </div>
+
+      {/* Company Filter */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="max-w-md">
+          <label htmlFor="company-filter" className="block text-sm font-medium text-gray-700 mb-1">
+            Filter by Company Code
+          </label>
+          <select
+            id="company-filter"
+            value={selectedCompanyId}
+            onChange={(e) => setSelectedCompanyId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Companies</option>
+            {companies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.company_code} - {company.company_name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Daily Activity Chart */}
