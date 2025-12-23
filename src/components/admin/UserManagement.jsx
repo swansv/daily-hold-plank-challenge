@@ -4,18 +4,29 @@ import { format } from 'date-fns';
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('total_plank_seconds');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
 
   useEffect(() => {
-    fetchUsers();
+    fetchData();
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
+      // Fetch companies first
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('id, company_code, company_name')
+        .order('company_code', { ascending: true });
+
+      if (companiesError) throw companiesError;
+
+      // Fetch users with company_id
       const { data, error } = await supabase
         .from('users')
         .select(`
@@ -24,7 +35,8 @@ export default function UserManagement() {
           email,
           total_plank_seconds,
           created_at,
-          is_admin
+          is_admin,
+          company_id
         `)
         .order('total_plank_seconds', { ascending: false });
 
@@ -38,13 +50,28 @@ export default function UserManagement() {
             .select('*', { count: 'exact', head: true })
             .eq('user_id', user.id);
 
-          return { ...user, logCount: count || 0 };
+          // Find company info for this user
+          const company = companiesData?.find(c => c.id === user.company_id);
+
+          return {
+            ...user,
+            logCount: count || 0,
+            company_code: company?.company_code || null,
+            company_name: company?.company_name || null
+          };
         })
       );
 
+      // Calculate user counts per company
+      const companiesWithCounts = companiesData.map(company => {
+        const userCount = usersWithLogCount.filter(u => u.company_id === company.id).length;
+        return { ...company, userCount };
+      });
+
+      setCompanies(companiesWithCounts);
       setUsers(usersWithLogCount);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -72,11 +99,21 @@ export default function UserManagement() {
     return { level: 'Starter', color: 'text-gray-600' };
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter by company first, then by search term
+  const filteredUsers = users.filter((user) => {
+    // Company filter
+    if (selectedCompanyId && user.company_id !== selectedCompanyId) {
+      return false;
+    }
+    // Search filter
+    if (searchTerm) {
+      return (
+        user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    return true;
+  });
 
   const sortedUsers = [...filteredUsers].sort((a, b) => {
     let aValue = a[sortBy];
@@ -113,7 +150,25 @@ export default function UserManagement() {
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label htmlFor="company-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Filter by Company Code
+            </label>
+            <select
+              id="company-filter"
+              value={selectedCompanyId}
+              onChange={(e) => setSelectedCompanyId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All Companies</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.company_code} - {company.company_name} ({company.userCount} users)
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="md:col-span-2">
             <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
               Search Users
@@ -182,6 +237,9 @@ export default function UserManagement() {
                   User
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Company
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Level
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -210,6 +268,15 @@ export default function UserManagement() {
                         </div>
                         <div className="text-sm text-gray-500">{user.email}</div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {user.company_code ? (
+                        <code className="text-sm bg-gray-100 px-2 py-1 rounded">
+                          {user.company_code}
+                        </code>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`text-sm font-semibold ${milestone.color}`}>
