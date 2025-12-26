@@ -9,7 +9,6 @@ export default function Signup() {
     confirmPassword: '',
     fullName: '',
     companyCode: '',
-    teamCode: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,16 +42,20 @@ export default function Signup() {
       return;
     }
 
+    // Validate access code is provided
+    if (!formData.companyCode.trim()) {
+      setError('Access code is required');
+      return;
+    }
+
     setLoading(true);
 
-    // Normalize codes: trim whitespace and convert to uppercase for case-insensitive lookup
-    const normalizedCompanyCode = formData.companyCode.trim().toUpperCase() || null;
-    const normalizedTeamCode = formData.teamCode.trim().toUpperCase() || null;
+    // Normalize code: trim whitespace and convert to uppercase for case-insensitive lookup
+    const normalizedCompanyCode = formData.companyCode.trim().toUpperCase();
 
     const { error } = await signUp(formData.email, formData.password, {
       full_name: formData.fullName,
       company_code: normalizedCompanyCode,
-      team_code: normalizedTeamCode,
     });
 
     if (error) {
@@ -165,34 +168,17 @@ export default function Signup() {
                 htmlFor="companyCode"
                 className="block text-sm font-semibold text-dark-900 mb-2"
               >
-                Company Code (Optional)
+                Access Code
               </label>
               <input
                 id="companyCode"
                 name="companyCode"
                 type="text"
+                required
                 value={formData.companyCode}
                 onChange={handleChange}
                 className="block w-full px-4 py-3 text-base text-dark-900 bg-white border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-brand-teal transition-colors duration-200"
-                placeholder="e.g., TEST2025"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="teamCode"
-                className="block text-sm font-semibold text-dark-900 mb-2"
-              >
-                Team Code (Optional)
-              </label>
-              <input
-                id="teamCode"
-                name="teamCode"
-                type="text"
-                value={formData.teamCode}
-                onChange={handleChange}
-                className="block w-full px-4 py-3 text-base text-dark-900 bg-white border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-brand-teal transition-colors duration-200"
-                placeholder="e.g., TEAM001"
+                placeholder="Enter your access code"
               />
             </div>
           </div>

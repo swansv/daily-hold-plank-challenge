@@ -65,13 +65,24 @@ export default function Dashboard() {
       setTotalSeconds(result.newTotal);
 
       // Show success message immediately
+      const messages = [];
+
       if (result.achievedMilestones && result.achievedMilestones.length > 0) {
         const milestoneNames = result.achievedMilestones
           .map((m) => m.name)
           .join(', ');
-        setSuccessMessage(
-          `Great job! You've achieved the ${milestoneNames} milestone!`
-        );
+        messages.push(`You've achieved the ${milestoneNames} milestone!`);
+      }
+
+      if (result.achievedCompanyMilestones && result.achievedCompanyMilestones.length > 0) {
+        const companyMilestoneNames = result.achievedCompanyMilestones
+          .map((m) => `${m.emoji} ${m.name}`)
+          .join(', ');
+        messages.push(`Your company just hit the ${companyMilestoneNames} milestone!`);
+      }
+
+      if (messages.length > 0) {
+        setSuccessMessage(`Great job! ${messages.join(' ')}`);
       } else {
         setSuccessMessage('Plank logged successfully!');
       }

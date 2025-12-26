@@ -116,66 +116,43 @@ export const AuthProvider = ({ children }) => {
     console.log('[SignUp] User data:', JSON.stringify(userData, null, 2));
 
     try {
-      // STEP 1: Look up company UUID from company_code BEFORE creating auth user
-      let companyId = null;
-      if (userData.company_code) {
-        console.log('[SignUp] STEP 1: Looking up company code:', userData.company_code);
-        try {
-          const { data: companyData, error: companyError } = await supabase
-            .from('companies')
-            .select('id')
-            .eq('company_code', userData.company_code)
-            .single();
-
-          if (companyError) {
-            console.error('[SignUp] Company lookup FAILED:', companyError);
-            throw new Error(`Company code "${userData.company_code}" not found`);
-          }
-          companyId = companyData?.id;
-          console.log('[SignUp] Company lookup result - companyId:', companyId, 'type:', typeof companyId);
-        } catch (companyLookupError) {
-          console.error('[SignUp] Company lookup exception:', companyLookupError);
-          throw companyLookupError;
-        }
-      } else {
-        console.log('[SignUp] STEP 1: No company_code provided');
-      }
-
-      // CRITICAL CHECK: company_id is NOT NULL in database
-      // If company code was provided but lookup failed, we must abort BEFORE creating auth user
-      if (userData.company_code && !companyId) {
-        const errorMsg = `SIGNUP FAILED: company_id is null/undefined after lookup for code "${userData.company_code}"`;
+      // STEP 1: Validate that access code is provided
+      if (!userData.company_code) {
+        const errorMsg = 'Access code is required';
         console.error('[SignUp] ' + errorMsg);
         throw new Error(errorMsg);
       }
 
-      // STEP 2: Look up team UUID from team_code if provided
-      let teamId = null;
-      if (userData.team_code) {
-        console.log('[SignUp] STEP 2: Looking up team code:', userData.team_code);
-        try {
-          const { data: teamData, error: teamError } = await supabase
-            .from('teams')
-            .select('id')
-            .eq('team_code', userData.team_code)
-            .single();
+      // STEP 2: Look up company UUID from access code BEFORE creating auth user
+      let companyId = null;
+      console.log('[SignUp] STEP 2: Looking up access code:', userData.company_code);
+      try {
+        const { data: companyData, error: companyError } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('company_code', userData.company_code)
+          .single();
 
-          if (teamError) {
-            console.error('[SignUp] Team lookup FAILED:', teamError);
-            throw new Error(`Team code "${userData.team_code}" not found`);
-          }
-          teamId = teamData?.id;
-          console.log('[SignUp] Team lookup result - teamId:', teamId, 'type:', typeof teamId);
-        } catch (teamLookupError) {
-          console.error('[SignUp] Team lookup exception:', teamLookupError);
-          throw teamLookupError;
+        if (companyError) {
+          console.error('[SignUp] Access code lookup FAILED:', companyError);
+          throw new Error(`Invalid access code "${userData.company_code}"`);
         }
-      } else {
-        console.log('[SignUp] STEP 2: No team_code provided');
+        companyId = companyData?.id;
+        console.log('[SignUp] Access code lookup result - companyId:', companyId, 'type:', typeof companyId);
+      } catch (companyLookupError) {
+        console.error('[SignUp] Access code lookup exception:', companyLookupError);
+        throw companyLookupError;
       }
 
-      // Log resolved IDs before proceeding
-      console.log('[SignUp] Pre-auth check - companyId:', companyId, '| teamId:', teamId);
+      // CRITICAL CHECK: company_id is NOT NULL in database
+      if (!companyId) {
+        const errorMsg = `Invalid access code "${userData.company_code}"`;
+        console.error('[SignUp] ' + errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Log resolved ID before proceeding
+      console.log('[SignUp] Pre-auth check - companyId:', companyId);
 
       // STEP 3: Create auth user
       console.log('[SignUp] STEP 3: Calling supabase.auth.signUp...');
@@ -208,7 +185,6 @@ export const AuthProvider = ({ children }) => {
           email: data.user.email,
           full_name: userData.full_name,
           company_id: companyId,
-          team_id: teamId,
         };
 
         console.log('[SignUp] INSERT VALUES (exact):');
@@ -216,7 +192,6 @@ export const AuthProvider = ({ children }) => {
         console.log('  email:', insertValues.email, '| type:', typeof insertValues.email);
         console.log('  full_name:', insertValues.full_name, '| type:', typeof insertValues.full_name);
         console.log('  company_id:', insertValues.company_id, '| type:', typeof insertValues.company_id);
-        console.log('  team_id:', insertValues.team_id, '| type:', typeof insertValues.team_id);
 
         // CRITICAL: Check for null company_id before INSERT (column is NOT NULL)
         if (insertValues.company_id === null || insertValues.company_id === undefined) {

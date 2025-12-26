@@ -15,6 +15,13 @@ export const usePlankLog = () => {
     { name: 'Master', seconds: 14400, label: '4 hours' },
   ];
 
+  const COMPANY_MILESTONES = [
+    { name: 'Bronze', emoji: '🥉', seconds: 30000, label: '500 minutes' },
+    { name: 'Silver', emoji: '🥈', seconds: 60000, label: '1,000 minutes' },
+    { name: 'Gold', emoji: '🥇', seconds: 150000, label: '2,500 minutes' },
+    { name: 'Platinum', emoji: '🏆', seconds: 300000, label: '5,000 minutes' },
+  ];
+
   const checkMilestones = useCallback(
     async (oldTotal, newTotal) => {
       const achievedMilestones = [];
@@ -136,6 +143,97 @@ export const usePlankLog = () => {
     [profile]
   );
 
+  const checkCompanyMilestones = useCallback(
+    async (oldTotal, newTotal) => {
+      const achievedMilestones = [];
+
+      for (const milestone of COMPANY_MILESTONES) {
+        if (oldTotal < milestone.seconds && newTotal >= milestone.seconds) {
+          achievedMilestones.push(milestone);
+        }
+      }
+
+      return achievedMilestones;
+    },
+    []
+  );
+
+  const recordCompanyMilestones = useCallback(
+    async (milestones, companyTotal) => {
+      if (!profile?.company_id) return;
+
+      try {
+        for (const milestone of milestones) {
+          // Check if milestone already exists for this company
+          const { data: existing } = await supabase
+            .from('company_milestone_achievements')
+            .select('id')
+            .eq('company_id', profile.company_id)
+            .eq('milestone_name', milestone.name)
+            .single();
+
+          if (!existing) {
+            // Get milestone id from company_milestones table
+            const { data: milestoneData } = await supabase
+              .from('company_milestones')
+              .select('id')
+              .eq('name', milestone.name)
+              .single();
+
+            if (milestoneData) {
+              // Record company milestone achievement
+              const { error: achievementError } = await supabase
+                .from('company_milestone_achievements')
+                .insert([
+                  {
+                    company_id: profile.company_id,
+                    milestone_id: milestoneData.id,
+                    milestone_name: milestone.name,
+                    total_seconds_at_achievement: companyTotal,
+                  },
+                ]);
+
+              if (achievementError) {
+                console.error('Error recording company milestone:', achievementError);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error recording company milestones:', err);
+      }
+    },
+    [profile]
+  );
+
+  const createCompanyMilestoneActivity = useCallback(
+    async (milestones) => {
+      if (!profile?.company_id) return;
+
+      try {
+        const activities = milestones.map((milestone) => ({
+          company_id: profile.company_id,
+          user_id: profile.id,
+          activity_type: 'company_milestone_achieved',
+          message: `Company achieved ${milestone.emoji} ${milestone.name} milestone (${milestone.label})!`,
+          metadata: { milestone: milestone.name, threshold: milestone.seconds },
+          created_at: new Date().toISOString(),
+        }));
+
+        if (activities.length > 0) {
+          const { error } = await supabase
+            .from('activity_feed')
+            .insert(activities);
+
+          if (error) throw error;
+        }
+      } catch (err) {
+        console.error('Error creating company milestone activity:', err);
+      }
+    },
+    [profile]
+  );
+
   const logPlank = useCallback(
     async (durationSeconds) => {
       if (!user || !profile) {
@@ -183,22 +281,52 @@ export const usePlankLog = () => {
 
         if (updateError) throw updateError;
 
-        // 3. Check for milestone achievements
+        // 3. Check for individual milestone achievements
         const achievedMilestones = await checkMilestones(oldTotal, newTotal);
 
-        // 4. Record milestones
+        // 4. Record individual milestones
         if (achievedMilestones.length > 0) {
           await recordMilestones(achievedMilestones);
         }
 
-        // 5. Create activity feed entries
+        // 5. Create activity feed entries for individual milestones
         await createActivityFeedEntry(durationSeconds, achievedMilestones);
+
+        // 6. Check for company milestone achievements
+        let achievedCompanyMilestones = [];
+        if (profile?.company_id) {
+          // Get company total
+          const { data: companyUsers, error: companyError } = await supabase
+            .from('users')
+            .select('total_plank_seconds')
+            .eq('company_id', profile.company_id);
+
+          if (!companyError && companyUsers) {
+            const oldCompanyTotal = companyUsers.reduce(
+              (sum, u) => sum + (u.total_plank_seconds || 0),
+              0
+            ) - durationSeconds; // Subtract the duration we just added to get old total
+            const newCompanyTotal = oldCompanyTotal + durationSeconds;
+
+            achievedCompanyMilestones = await checkCompanyMilestones(
+              oldCompanyTotal,
+              newCompanyTotal
+            );
+
+            // 7. Record company milestones
+            if (achievedCompanyMilestones.length > 0) {
+              await recordCompanyMilestones(achievedCompanyMilestones, newCompanyTotal);
+              await createCompanyMilestoneActivity(achievedCompanyMilestones);
+            }
+          }
+        }
 
         setLoading(false);
         return {
           success: true,
           newTotal,
           achievedMilestones,
+          achievedCompanyMilestones,
         };
       } catch (err) {
         console.error('Error logging plank:', err);
@@ -207,7 +335,7 @@ export const usePlankLog = () => {
         return { success: false, error: err.message };
       }
     },
-    [user, profile, checkMilestones, recordMilestones, createActivityFeedEntry]
+    [user, profile, checkMilestones, recordMilestones, createActivityFeedEntry, checkCompanyMilestones, recordCompanyMilestones, createCompanyMilestoneActivity]
   );
 
   return {

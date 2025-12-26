@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 
+const COMPANY_MILESTONES = [
+  { name: 'Bronze', emoji: '🥉', seconds: 30000, label: '500 minutes' },
+  { name: 'Silver', emoji: '🥈', seconds: 60000, label: '1,000 minutes' },
+  { name: 'Gold', emoji: '🥇', seconds: 150000, label: '2,500 minutes' },
+  { name: 'Platinum', emoji: '🏆', seconds: 300000, label: '5,000 minutes' },
+];
+
 export default function CompanyProgress({ userTotalSeconds, onRefresh }) {
   const { profile } = useAuth();
   const [stats, setStats] = useState({
@@ -10,6 +17,7 @@ export default function CompanyProgress({ userTotalSeconds, onRefresh }) {
     myContribution: 0,
     companyGoal: null,
   });
+  const [achievedMilestones, setAchievedMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,6 +64,16 @@ export default function CompanyProgress({ userTotalSeconds, onRefresh }) {
         myContribution,
         companyGoal: null, // Can be fetched from companies table if goal field exists
       });
+
+      // Fetch achieved company milestones from database
+      const { data: achievements } = await supabase
+        .from('company_milestone_achievements')
+        .select('milestone_name')
+        .eq('company_id', profile.company_id);
+
+      if (achievements) {
+        setAchievedMilestones(achievements.map((a) => a.milestone_name));
+      }
     } catch (error) {
       console.error('Error fetching company stats:', error);
     } finally {
@@ -76,6 +94,39 @@ export default function CompanyProgress({ userTotalSeconds, onRefresh }) {
       return `${secs}s`;
     }
   };
+
+  const getNextMilestone = () => {
+    for (const milestone of COMPANY_MILESTONES) {
+      if (stats.companyTotal < milestone.seconds) {
+        return milestone;
+      }
+    }
+    return null;
+  };
+
+  const getCurrentMilestone = () => {
+    for (let i = COMPANY_MILESTONES.length - 1; i >= 0; i--) {
+      if (stats.companyTotal >= COMPANY_MILESTONES[i].seconds) {
+        return COMPANY_MILESTONES[i];
+      }
+    }
+    return null;
+  };
+
+  const getMilestoneProgress = () => {
+    const nextMilestone = getNextMilestone();
+    if (!nextMilestone) return 100;
+
+    const currentMilestone = getCurrentMilestone();
+    const previousSeconds = currentMilestone?.seconds || 0;
+    const range = nextMilestone.seconds - previousSeconds;
+    const progress = stats.companyTotal - previousSeconds;
+
+    return Math.min((progress / range) * 100, 100);
+  };
+
+  const nextMilestone = getNextMilestone();
+  const milestoneProgress = getMilestoneProgress();
 
   // Don't show if user is not part of a company
   if (!profile?.company_id) {
@@ -153,6 +204,67 @@ export default function CompanyProgress({ userTotalSeconds, onRefresh }) {
             <p className="text-2xl font-bold text-brand-turquoise">
               {stats.myContribution}%
             </p>
+          </div>
+        </div>
+
+        {/* Progress to Next Milestone */}
+        {nextMilestone ? (
+          <div>
+            <div className="flex justify-between text-sm font-medium text-dark-900 mb-2">
+              <span>Progress to {nextMilestone.emoji} {nextMilestone.name}</span>
+              <span className="text-brand-teal">{Math.round(milestoneProgress)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-brand-teal to-brand-turquoise h-4 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${milestoneProgress}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-dark-800 mt-1">
+              <span>{formatTime(stats.companyTotal)}</span>
+              <span>{nextMilestone.label}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-3 px-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl border border-amber-200">
+            <span className="text-2xl">🏆</span>
+            <p className="text-sm font-semibold text-amber-800 mt-1">
+              All milestones achieved!
+            </p>
+          </div>
+        )}
+
+        {/* Company Milestones */}
+        <div>
+          <p className="text-sm font-semibold text-dark-900 mb-3">Company Milestones</p>
+          <div className="grid grid-cols-2 gap-2">
+            {COMPANY_MILESTONES.map((milestone) => {
+              const achieved = achievedMilestones.includes(milestone.name) ||
+                stats.companyTotal >= milestone.seconds;
+              return (
+                <div
+                  key={milestone.name}
+                  className={`flex items-center p-3 rounded-xl transition-all duration-300 ${
+                    achieved
+                      ? 'bg-success-50 border-2 border-success-600'
+                      : 'bg-dark-50 border border-gray-200'
+                  }`}
+                >
+                  <span className="text-xl mr-2">{milestone.emoji}</span>
+                  <div>
+                    <p className={`text-sm font-semibold ${achieved ? 'text-dark-900' : 'text-dark-800'}`}>
+                      {milestone.name}
+                    </p>
+                    <p className={`text-xs ${achieved ? 'text-success-600' : 'text-dark-800'}`}>
+                      {milestone.label}
+                    </p>
+                  </div>
+                  {achieved && (
+                    <span className="ml-auto text-success-600 text-lg">✓</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
