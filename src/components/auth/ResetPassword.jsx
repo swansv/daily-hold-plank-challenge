@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
@@ -8,7 +8,58 @@ export default function ResetPassword() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let timeoutId;
+
+    const handlePasswordReset = async () => {
+      // Check URL for tokens
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (!error) {
+          setSessionReady(true);
+          setCheckingSession(false);
+          return;
+        }
+      }
+
+      // Set timeout for invalid/expired link
+      timeoutId = setTimeout(() => {
+        if (!sessionReady) {
+          setError('Invalid or expired reset link. Please request a new one.');
+          setCheckingSession(false);
+        }
+      }, 3000);
+    };
+
+    handlePasswordReset();
+
+    // Also listen for auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setSessionReady(true);
+        setCheckingSession(false);
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,6 +95,54 @@ export default function ResetPassword() {
       setLoading(false);
     }
   };
+
+  // Show loading state while checking session
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dark-50 px-4">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <div>
+            <h2 className="mt-6 text-center text-3xl font-display font-bold text-dark-900">
+              Set new password
+            </h2>
+            <p className="mt-4 text-sm text-dark-600">Verifying reset link...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if session not ready and not checking
+  if (!sessionReady && error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dark-50 px-4">
+        <div className="max-w-md w-full space-y-8">
+          <div>
+            <h2 className="mt-6 text-center text-3xl font-display font-bold text-dark-900">
+              Set new password
+            </h2>
+          </div>
+          <div className="rounded-xl bg-red-50 p-4 border border-red-200">
+            <p className="text-sm font-medium text-red-900">{error}</p>
+          </div>
+          <div className="text-center space-y-4">
+            <Link
+              to="/forgot-password"
+              className="block w-full px-6 py-3 text-base font-semibold text-white bg-brand-ocean rounded-lg shadow-md hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-ocean transition-all duration-200"
+            >
+              Request New Reset Link
+            </Link>
+            <Link
+              to="/login"
+              className="text-sm font-semibold text-brand-teal hover:text-brand-ocean transition-colors duration-200"
+            >
+              Back to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-dark-50 px-4">
