@@ -1,27 +1,33 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { Link } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
-export default function Login() {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { signIn } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess(false);
     setLoading(true);
 
-    const { error } = await signIn(email, password);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password',
+      });
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess(true);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setLoading(false);
-    } else {
-      navigate('/dashboard');
     }
   };
 
@@ -30,16 +36,23 @@ export default function Login() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-display font-bold text-dark-900">
-            Sign in to your account
+            Reset your password
           </h2>
           <p className="mt-2 text-center text-sm text-dark-600">
-            Welcome to the Daily Hold Plank Challenge
+            Enter your email and we'll send you a reset link
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="rounded-xl bg-red-50 p-4 border border-red-200">
               <p className="text-sm font-medium text-red-900">{error}</p>
+            </div>
+          )}
+          {success && (
+            <div className="rounded-xl bg-green-50 p-4 border border-green-200">
+              <p className="text-sm font-medium text-green-900">
+                Check your email for a password reset link
+              </p>
             </div>
           )}
           <div className="space-y-4">
@@ -59,53 +72,25 @@ export default function Login() {
                 placeholder="Email address"
               />
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-dark-900 mb-2">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full px-4 py-3 text-base text-dark-900 bg-white border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-brand-teal transition-colors duration-200"
-                placeholder="Password"
-              />
-            </div>
           </div>
 
           <div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || success}
               className="w-full flex justify-center px-6 py-3 text-base font-semibold text-white bg-brand-ocean rounded-lg shadow-md hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-ocean transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Sending...' : 'Reset Password'}
             </button>
           </div>
 
           <div className="text-center">
             <Link
-              to="/forgot-password"
+              to="/login"
               className="text-sm font-semibold text-brand-teal hover:text-brand-ocean transition-colors duration-200"
             >
-              Forgot password?
+              Back to Login
             </Link>
-          </div>
-
-          <div className="text-center">
-            <p className="text-sm text-dark-800">
-              Don't have an account?{' '}
-              <Link
-                to="/signup"
-                className="font-semibold text-brand-teal hover:text-brand-ocean transition-colors duration-200"
-              >
-                Sign up
-              </Link>
-            </p>
           </div>
         </form>
       </div>
