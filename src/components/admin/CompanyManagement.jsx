@@ -1,6 +1,22 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { format } from 'date-fns';
+
+// Format a date string (YYYY-MM-DD) for display without timezone shift
+const formatDateUTC = (dateString) => {
+  const [year, month, day] = dateString.split('-');
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+// Parse a date string as local date for comparison
+const parseLocalDate = (dateString) => {
+  return new Date(dateString + 'T00:00:00');
+};
 
 export default function CompanyManagement() {
   const [companies, setCompanies] = useState([]);
@@ -236,8 +252,8 @@ export default function CompanyManagement() {
     }
 
     const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseLocalDate(startDate);
+    const end = parseLocalDate(endDate);
 
     if (now < start) {
       return { label: 'Upcoming', color: 'bg-blue-100 text-blue-800' };
@@ -450,10 +466,10 @@ export default function CompanyManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {format(new Date(company.challenge_start_date), 'MMM d, yyyy')}
+                        {formatDateUTC(company.challenge_start_date)}
                       </div>
                       <div className="text-sm text-gray-500">
-                        to {format(new Date(company.challenge_end_date), 'MMM d, yyyy')}
+                        to {formatDateUTC(company.challenge_end_date)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
