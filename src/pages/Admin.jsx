@@ -7,6 +7,7 @@ import UserManagement from '../components/admin/UserManagement';
 import ActivityModeration from '../components/admin/ActivityModeration';
 import Analytics from '../components/admin/Analytics';
 import CompanyManagement from '../components/admin/CompanyManagement';
+import CommunityModeration from '../components/admin/CommunityModeration';
 
 export default function Admin() {
   const { user, profile, signOut } = useAuth();
@@ -31,6 +32,7 @@ export default function Admin() {
     { id: 'companies', name: 'Companies', icon: '🏢' },
     { id: 'users', name: 'Users', icon: '👥' },
     { id: 'activity', name: 'Activity', icon: '📝' },
+    { id: 'community', name: 'Community', icon: '💬' },
     { id: 'analytics', name: 'Analytics', icon: '📈' },
   ];
 
@@ -107,6 +109,7 @@ export default function Admin() {
         {activeTab === 'companies' && <CompanyManagement />}
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'activity' && <ActivityModeration />}
+        {activeTab === 'community' && <CommunityModeration />}
         {activeTab === 'analytics' && <Analytics />}
       </div>
     </div>
