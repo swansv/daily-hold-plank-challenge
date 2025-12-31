@@ -9,6 +9,7 @@ import RecentLogs from '../components/plank/RecentLogs';
 import ActivityFeed from '../components/activity/ActivityFeed';
 import HealthTips from '../components/tips/HealthTips';
 import CompanyProgress from '../components/company/CompanyProgress';
+import Community from '../components/community/Community';
 
 export default function Dashboard() {
   const { user, profile, signOut, reloadProfile } = useAuth();
@@ -174,8 +175,9 @@ export default function Dashboard() {
               <HealthTips />
             </div>
 
-            {/* Right Column - Recent Logs and Activity Feed */}
+            {/* Right Column - Community, Recent Logs and Activity Feed */}
             <div className="lg:col-span-1 space-y-6">
+              <Community />
               <RecentLogs logs={recentLogs} loading={logsLoading} />
               <ActivityFeed />
             </div>

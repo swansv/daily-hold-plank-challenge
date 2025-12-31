@@ -184,6 +184,7 @@ export const AuthProvider = ({ children }) => {
           auth_user_id: data.user.id,
           email: data.user.email,
           full_name: userData.full_name,
+          username: userData.username,
           company_id: companyId,
         };
 
@@ -191,6 +192,7 @@ export const AuthProvider = ({ children }) => {
         console.log('  auth_user_id:', insertValues.auth_user_id, '| type:', typeof insertValues.auth_user_id);
         console.log('  email:', insertValues.email, '| type:', typeof insertValues.email);
         console.log('  full_name:', insertValues.full_name, '| type:', typeof insertValues.full_name);
+        console.log('  username:', insertValues.username, '| type:', typeof insertValues.username);
         console.log('  company_id:', insertValues.company_id, '| type:', typeof insertValues.company_id);
 
         // CRITICAL: Check for null company_id before INSERT (column is NOT NULL)

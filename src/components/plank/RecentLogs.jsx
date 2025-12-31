@@ -10,7 +10,7 @@ export default function RecentLogs({ logs, loading }) {
   if (loading) {
     return (
       <div className="bg-white shadow-lg rounded-2xl p-6 border border-gray-200">
-        <h2 className="text-xl font-display font-bold text-dark-900 mb-4">Recent Logs</h2>
+        <h2 className="text-xl font-display font-bold text-dark-900 mb-4">My Recent Logs</h2>
         <div className="flex justify-center py-8">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-200 border-t-brand-teal"></div>
         </div>
@@ -21,7 +21,7 @@ export default function RecentLogs({ logs, loading }) {
   if (!logs || logs.length === 0) {
     return (
       <div className="bg-white shadow-lg rounded-2xl p-6 border border-gray-200">
-        <h2 className="text-xl font-display font-bold text-dark-900 mb-4">Recent Logs</h2>
+        <h2 className="text-xl font-display font-bold text-dark-900 mb-4">My Recent Logs</h2>
         <div className="text-center py-8">
           <p className="text-dark-800 font-medium">No plank logs yet</p>
           <p className="text-sm text-dark-800 mt-1">
@@ -34,7 +34,7 @@ export default function RecentLogs({ logs, loading }) {
 
   return (
     <div className="bg-white shadow-lg rounded-2xl p-6 border border-gray-200 hover:shadow-xl transition-shadow duration-300">
-      <h2 className="text-xl font-display font-bold text-dark-900 mb-4">Recent Logs</h2>
+      <h2 className="text-xl font-display font-bold text-dark-900 mb-4">My Recent Logs</h2>
       <div className="space-y-3">
         {logs.map((log) => (
           <div

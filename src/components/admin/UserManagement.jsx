@@ -38,6 +38,7 @@ export default function UserManagement() {
         .select(`
           id,
           full_name,
+          username,
           email,
           total_plank_seconds,
           created_at,
@@ -326,6 +327,9 @@ export default function UserManagement() {
                         <div className="text-sm font-medium text-gray-900">
                           {user.full_name}
                         </div>
+                        {user.username && (
+                          <div className="text-sm text-indigo-600">@{user.username}</div>
+                        )}
                         <div className="text-sm text-gray-500">{user.email}</div>
                       </div>
                     </td>

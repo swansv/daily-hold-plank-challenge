@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -8,10 +9,12 @@ export default function Signup() {
     password: '',
     confirmPassword: '',
     fullName: '',
+    username: '',
     companyCode: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const navigate = useNavigate();
   const { signUp } = useAuth();
 
@@ -24,6 +27,33 @@ export default function Signup() {
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const validateUsername = (username) => {
+    if (!username.trim()) {
+      return 'Username is required';
+    }
+    if (username.length < 3 || username.length > 20) {
+      return 'Username must be 3-20 characters';
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return 'Username can only contain letters, numbers, and underscores';
+    }
+    return null;
+  };
+
+  const checkUsernameAvailability = async (username) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking username:', error);
+      return false;
+    }
+    return !data; // Available if no user found
   };
 
   const handleSubmit = async (e) => {
@@ -42,6 +72,13 @@ export default function Signup() {
       return;
     }
 
+    // Validate username
+    const usernameError = validateUsername(formData.username);
+    if (usernameError) {
+      setError(usernameError);
+      return;
+    }
+
     // Validate access code is provided
     if (!formData.companyCode.trim()) {
       setError('Access code is required');
@@ -49,12 +86,24 @@ export default function Signup() {
     }
 
     setLoading(true);
+    setCheckingUsername(true);
+
+    // Check username availability
+    const isAvailable = await checkUsernameAvailability(formData.username.trim());
+    setCheckingUsername(false);
+
+    if (!isAvailable) {
+      setError('Username is already taken. Please choose another.');
+      setLoading(false);
+      return;
+    }
 
     // Normalize code: trim whitespace and convert to uppercase for case-insensitive lookup
     const normalizedCompanyCode = formData.companyCode.trim().toUpperCase();
 
     const { error } = await signUp(formData.email, formData.password, {
       full_name: formData.fullName,
+      username: formData.username.trim(),
       company_code: normalizedCompanyCode,
     });
 
@@ -101,6 +150,29 @@ export default function Signup() {
                 className="block w-full px-4 py-3 text-base text-dark-900 bg-white border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-brand-teal transition-colors duration-200"
                 placeholder="John Doe"
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="username"
+                className="block text-sm font-semibold text-dark-900 mb-2"
+              >
+                Username
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                value={formData.username}
+                onChange={handleChange}
+                className="block w-full px-4 py-3 text-base text-dark-900 bg-white border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-brand-teal transition-colors duration-200"
+                placeholder="Choose a display name"
+                maxLength={20}
+              />
+              <p className="text-xs text-dark-600 mt-1">
+                3-20 characters, letters, numbers, and underscores only
+              </p>
             </div>
 
             <div>
