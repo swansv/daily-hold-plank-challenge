@@ -1,23 +1,86 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 
 const QUICK_EMOJIS = ['💪', '🎉', '❤️', '🔥', '👏', '⭐'];
 const REACTION_EMOJIS = ['❤️', '👏', '🔥'];
+const LOAD_TIMEOUT_MS = 5000;
 
 export default function Community() {
   const { profile } = useAuth();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [postContent, setPostContent] = useState('');
   const [posting, setPosting] = useState(false);
+  const channelRef = useRef(null);
 
+  // Fetch a single post by ID (for real-time updates)
+  const fetchSinglePost = useCallback(async (postId) => {
+    if (!profile?.id) return null;
+
+    try {
+      const { data: post, error: postError } = await supabase
+        .from('community_posts')
+        .select(`
+          id,
+          content,
+          emoji_type,
+          created_at,
+          user_id,
+          users (
+            id,
+            username,
+            full_name
+          )
+        `)
+        .eq('id', postId)
+        .single();
+
+      if (postError) throw postError;
+
+      // Fetch reactions for this post
+      const { data: reactions, error: reactionsError } = await supabase
+        .from('post_reactions')
+        .select('id, post_id, user_id, emoji')
+        .eq('post_id', postId);
+
+      if (reactionsError) throw reactionsError;
+
+      const reactionCounts = {};
+      const userReactions = {};
+
+      REACTION_EMOJIS.forEach(emoji => {
+        reactionCounts[emoji] = (reactions || []).filter(r => r.emoji === emoji).length;
+        userReactions[emoji] = (reactions || []).some(r => r.emoji === emoji && r.user_id === profile.id);
+      });
+
+      return {
+        ...post,
+        reactionCounts,
+        userReactions,
+      };
+    } catch (error) {
+      console.error('Error fetching single post:', error);
+      return null;
+    }
+  }, [profile?.id]);
+
+  // Fetch all posts
   const fetchPosts = useCallback(async () => {
     if (!profile?.company_id) return;
 
+    setLoadError(null);
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setLoadError('Loading took too long. Please try refreshing.');
+    }, LOAD_TIMEOUT_MS);
+
     try {
-      // Fetch posts with user info
+      // Fetch posts with user info - limit to 20 for performance
       const { data: postsData, error: postsError } = await supabase
         .from('community_posts')
         .select(`
@@ -33,11 +96,11 @@ export default function Community() {
           )
         `)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(20);
 
       if (postsError) throw postsError;
 
-      // Fetch reactions for all posts
+      // Fetch reactions for all posts in one query
       const postIds = postsData?.map(p => p.id) || [];
 
       let reactionsData = [];
@@ -69,17 +132,101 @@ export default function Community() {
         };
       }) || [];
 
+      clearTimeout(timeoutId);
       setPosts(postsWithReactions);
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Error fetching posts:', error);
+      setLoadError('Failed to load posts. Please try again.');
     } finally {
       setLoading(false);
     }
   }, [profile?.company_id, profile?.id]);
 
+  // Set up real-time subscriptions
   useEffect(() => {
+    if (!profile?.company_id) return;
+
     fetchPosts();
-  }, [fetchPosts]);
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('community-feed')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'community_posts',
+        },
+        async (payload) => {
+          // Fetch the new post with user data
+          const newPost = await fetchSinglePost(payload.new.id);
+          if (newPost) {
+            setPosts(prev => [newPost, ...prev.slice(0, 19)]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'post_reactions',
+        },
+        (payload) => {
+          const { post_id, user_id, emoji } = payload.new;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== post_id) return post;
+            return {
+              ...post,
+              reactionCounts: {
+                ...post.reactionCounts,
+                [emoji]: (post.reactionCounts[emoji] || 0) + 1,
+              },
+              userReactions: {
+                ...post.userReactions,
+                [emoji]: user_id === profile?.id ? true : post.userReactions[emoji],
+              },
+            };
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'post_reactions',
+        },
+        (payload) => {
+          const { post_id, user_id, emoji } = payload.old;
+          setPosts(prev => prev.map(post => {
+            if (post.id !== post_id) return post;
+            return {
+              ...post,
+              reactionCounts: {
+                ...post.reactionCounts,
+                [emoji]: Math.max(0, (post.reactionCounts[emoji] || 0) - 1),
+              },
+              userReactions: {
+                ...post.userReactions,
+                [emoji]: user_id === profile?.id ? false : post.userReactions[emoji],
+              },
+            };
+          }));
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [profile?.company_id, profile?.id, fetchPosts, fetchSinglePost]);
 
   const handleQuickEmoji = async (emoji) => {
     if (!profile?.id || posting) return;
@@ -95,7 +242,7 @@ export default function Community() {
         }]);
 
       if (error) throw error;
-      await fetchPosts();
+      // Real-time subscription will handle adding the post
     } catch (error) {
       console.error('Error posting emoji:', error);
     } finally {
@@ -119,7 +266,7 @@ export default function Community() {
 
       if (error) throw error;
       setPostContent('');
-      await fetchPosts();
+      // Real-time subscription will handle adding the post
     } catch (error) {
       console.error('Error posting:', error);
     } finally {
@@ -133,9 +280,24 @@ export default function Community() {
     const post = posts.find(p => p.id === postId);
     const hasReacted = post?.userReactions[emoji];
 
+    // Optimistic update
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      return {
+        ...p,
+        reactionCounts: {
+          ...p.reactionCounts,
+          [emoji]: hasReacted ? Math.max(0, p.reactionCounts[emoji] - 1) : p.reactionCounts[emoji] + 1,
+        },
+        userReactions: {
+          ...p.userReactions,
+          [emoji]: !hasReacted,
+        },
+      };
+    }));
+
     try {
       if (hasReacted) {
-        // Remove reaction
         const { error } = await supabase
           .from('post_reactions')
           .delete()
@@ -145,7 +307,6 @@ export default function Community() {
 
         if (error) throw error;
       } else {
-        // Add reaction
         const { error } = await supabase
           .from('post_reactions')
           .insert([{
@@ -156,26 +317,23 @@ export default function Community() {
 
         if (error) throw error;
       }
-
-      // Update local state optimistically
+    } catch (error) {
+      console.error('Error toggling reaction:', error);
+      // Revert optimistic update on error
       setPosts(prev => prev.map(p => {
         if (p.id !== postId) return p;
         return {
           ...p,
           reactionCounts: {
             ...p.reactionCounts,
-            [emoji]: hasReacted ? p.reactionCounts[emoji] - 1 : p.reactionCounts[emoji] + 1,
+            [emoji]: hasReacted ? p.reactionCounts[emoji] + 1 : Math.max(0, p.reactionCounts[emoji] - 1),
           },
           userReactions: {
             ...p.userReactions,
-            [emoji]: !hasReacted,
+            [emoji]: hasReacted,
           },
         };
       }));
-    } catch (error) {
-      console.error('Error toggling reaction:', error);
-      // Refresh posts on error to sync state
-      fetchPosts();
     }
   };
 
@@ -190,9 +348,35 @@ export default function Community() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="bg-slate-800 rounded-2xl p-6 shadow-lg">
+        <h2 className="text-xl font-display font-bold text-white mb-4">Community</h2>
+        <div className="text-center py-8">
+          <p className="text-red-400 mb-4">{loadError}</p>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setLoadError(null);
+              fetchPosts();
+            }}
+            className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-opacity-90"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-slate-800 rounded-2xl p-6 shadow-lg">
-      <h2 className="text-xl font-display font-bold text-white mb-4">Community</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-display font-bold text-white">Community</h2>
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/50">
+          Live
+        </span>
+      </div>
 
       {/* Quick Emoji Buttons */}
       <div className="flex gap-2 mb-4 flex-wrap">
@@ -289,6 +473,11 @@ export default function Community() {
           ))
         )}
       </div>
+      {posts.length >= 20 && (
+        <p className="text-xs text-slate-400 text-center mt-4">
+          Showing last 20 posts
+        </p>
+      )}
     </div>
   );
 }
