@@ -59,12 +59,61 @@ export default function ActivityModeration() {
     }
 
     try {
-      const { error } = await supabase
+      // Find the activity to get duration and user info
+      const activityToDelete = activities.find(a => a.id === activityId);
+      if (!activityToDelete) {
+        alert('Activity not found');
+        return;
+      }
+
+      console.log('Deleting activity:', {
+        id: activityId,
+        duration: activityToDelete.duration_seconds,
+        userId: activityToDelete.user_id
+      });
+
+      // 1. Delete from plank_logs
+      const { data: deleteData, error: deleteError } = await supabase
         .from('plank_logs')
         .delete()
-        .eq('id', activityId);
+        .eq('id', activityId)
+        .select();
 
-      if (error) throw error;
+      console.log('Supabase delete response:', { data: deleteData, error: deleteError });
+
+      if (deleteError) throw deleteError;
+
+      // Check if anything was actually deleted
+      if (!deleteData || deleteData.length === 0) {
+        alert('Delete failed: No rows affected. Check RLS policies for admin DELETE on plank_logs table.');
+        return;
+      }
+
+      // 2. Update user's total_plank_seconds (subtract the deleted duration)
+      const newTotal = Math.max(0, (activityToDelete.users.total_plank_seconds || 0) - activityToDelete.duration_seconds);
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ total_plank_seconds: newTotal })
+        .eq('id', activityToDelete.user_id);
+
+      if (updateError) {
+        console.error('Error updating user total:', updateError);
+      }
+
+      // 3. Delete related activity_feed entries for this plank log
+      // Match by user_id, activity_type, and approximate timestamp (within 1 second)
+      const logCreatedAt = new Date(activityToDelete.created_at);
+      const { error: feedError } = await supabase
+        .from('activity_feed')
+        .delete()
+        .eq('user_id', activityToDelete.user_id)
+        .eq('activity_type', 'plank_logged')
+        .gte('created_at', new Date(logCreatedAt.getTime() - 1000).toISOString())
+        .lte('created_at', new Date(logCreatedAt.getTime() + 1000).toISOString());
+
+      if (feedError) {
+        console.error('Error deleting activity feed entry:', feedError);
+      }
 
       // Refresh activities
       await fetchData();
@@ -72,7 +121,7 @@ export default function ActivityModeration() {
       alert('Activity deleted successfully');
     } catch (error) {
       console.error('Error deleting activity:', error);
-      alert('Failed to delete activity');
+      alert('Failed to delete activity: ' + error.message);
     }
   };
 
